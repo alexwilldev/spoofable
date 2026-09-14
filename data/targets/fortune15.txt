@@ -1,0 +1,17 @@
+# Fortune 15 (2025 list), primary corporate domains.
+# Source: Fortune 500 ranking. Domains verified by hand.
+walmart.com
+amazon.com
+unitedhealthgroup.com
+apple.com
+cvshealth.com
+berkshirehathaway.com
+alphabet.com
+mckesson.com
+chevron.com
+cencora.com
+costco.com
+jpmorganchase.com
+microsoft.com
+cardinalhealth.com
+exxonmobil.com

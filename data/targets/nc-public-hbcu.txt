@@ -1,0 +1,8 @@
+# North Carolina's five public HBCUs, all constituent institutions of
+# the UNC System. UNC Pembroke is deliberately excluded: it is a
+# historically American Indian institution, not an HBCU.
+ncat.edu                # North Carolina A&T State University
+nccu.edu                # North Carolina Central University
+ecsu.edu                # Elizabeth City State University
+fayettevillestate.edu   # Fayetteville State University
+wssu.edu                # Winston-Salem State University
