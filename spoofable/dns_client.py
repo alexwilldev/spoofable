@@ -212,12 +212,27 @@ def _parse_response(data: bytes, want_type: int) -> Tuple[int, bool, List[bytes]
     records: List[bytes] = []
     for _ in range(ancount):
         offset = _skip_name(data, offset)
+
+        # Every answer the header promised must actually be present. If
+        # the buffer ends early we must say so, not quietly return the
+        # records that happened to fit: a partial answer returned as a
+        # complete one is how a domain with a perfectly good SPF record
+        # gets reported as having none.
         if offset + 10 > len(data):
-            break
+            raise DnsError(
+                "response ended before the answer section was complete "
+                "(header promised %d answers)" % ancount
+            )
+
         rtype, _rclass, _ttl, rdlength = struct.unpack_from("!HHIH", data, offset)
         offset += 10
+
+        if offset + rdlength > len(data):
+            raise DnsError("record data runs past the end of the response")
+
         rdata = data[offset : offset + rdlength]
         offset += rdlength
+
         # CNAMEs and other types can appear in the answer section; keep
         # only the type we asked about.
         if rtype == want_type:
@@ -251,7 +266,17 @@ def _query_udp(packet: bytes, resolver: str, timeout: float) -> bytes:
     sock.settimeout(timeout)
     try:
         sock.sendto(packet, (resolver, 53))
-        return sock.recvfrom(EDNS_BUFFER)[0]
+        # Read with a buffer larger than the one we advertised. recvfrom
+        # silently discards anything past the size requested, so reading
+        # exactly EDNS_BUFFER bytes means a datagram of exactly that size
+        # arrives looking complete but cut off mid-record, and the parser
+        # then walks off the end of a name.
+        #
+        # This is not hypothetical. It is what made amazon.com and
+        # mckesson.com fail with "packet truncated while reading a name"
+        # on the first real scan: their TXT responses are large enough to
+        # hit the boundary.
+        return sock.recvfrom(65535)[0]
     finally:
         sock.close()
 
@@ -312,7 +337,16 @@ def query(
         for resolver in resolvers:
             try:
                 raw = _query_udp(packet, resolver, timeout)
-                rcode, truncated, records = _parse_response(raw, qtype)
+                try:
+                    rcode, truncated, records = _parse_response(raw, qtype)
+                except DnsError:
+                    # The datagram did not parse. Rather than moving to
+                    # the next resolver, which will almost certainly
+                    # return the same oversized answer, retry this one
+                    # over TCP where the response is length-prefixed and
+                    # cannot be cut short.
+                    truncated = True
+                    rcode, records = RCODE_NOERROR, []
 
                 if truncated:
                     # The answer exists but did not fit. This is the

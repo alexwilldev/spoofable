@@ -123,6 +123,22 @@ class TestParseResponse:
         with pytest.raises(DnsError):
             _parse_response(b"\x00\x01", TYPE_TXT)
 
+    def test_datagram_cut_mid_record_raises_rather_than_lying(self):
+        """
+        A datagram chopped off partway through an answer must raise, so
+        that query() can retry over TCP. The failure mode being guarded
+        against is returning the records that happened to fit and
+        presenting a partial answer as a complete one.
+
+        This is the shape of the bug that made amazon.com and
+        mckesson.com fail on the first real scan: the receive buffer was
+        the same size as the advertised EDNS buffer, so a response at
+        that boundary arrived silently cut short.
+        """
+        full = build_response([txt_rdata("v=spf1 -all"), txt_rdata("x" * 200)])
+        with pytest.raises(DnsError):
+            _parse_response(full[:-150], TYPE_TXT)
+
 
 class TestTxtChunkJoining:
     """
