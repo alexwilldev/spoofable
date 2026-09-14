@@ -6,6 +6,10 @@ Measures whether an organization can be impersonated over email, by evaluating t
 
 No dependencies. Python standard library only, including the DNS client.
 
+
+*Dislcaimer* 
+This project is 100% coded by Claude, using Opus 5 extra, as directed as of a COMP163 assignment at NC A&T. 
+
 ```
 $ spoofable scan --targets data/targets/nc-public-hbcu.txt
 
