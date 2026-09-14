@@ -1,5 +1,7 @@
 # spoofable
 
+[![tests](https://github.com/alexwilldev/spoofable/actions/workflows/tests.yml/badge.svg)](https://github.com/alexwilldev/spoofable/actions/workflows/tests.yml)
+
 Measures whether an organization can be impersonated over email, by evaluating the SPF and DMARC records it publishes in DNS.
 
 No dependencies. Python standard library only, including the DNS client.
