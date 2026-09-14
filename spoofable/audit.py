@@ -226,21 +226,35 @@ def audit_many(domains, workers: int = 8, on_result=None) -> List[DomainAudit]:
 
     The worker count is deliberately modest. Each domain costs several
     DNS queries, and public resolvers rate limit; going wide makes the
-    scan less reliable, not faster. Results come back in input order
-    regardless of completion order, so runs are reproducible.
+    scan less reliable, not faster.
+
+    on_result fires the moment each domain finishes, in completion
+    order, so a caller can show progress. The returned list is in input
+    order regardless, so a run is reproducible and the CSV is stable.
+
+    The distinction matters: an earlier version used pool.map, which
+    yields strictly in input order and therefore shows nothing at all
+    until the first domain completes. One slow domain made the whole
+    scan look like it had hung.
     """
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     domains = [d.strip().lower().rstrip(".") for d in domains if d.strip()]
-    results: List[DomainAudit] = []
+    by_index = {}
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for result in pool.map(audit_domain, domains):
-            results.append(result)
+        futures = {
+            pool.submit(audit_domain, domain): index
+            for index, domain in enumerate(domains)
+        }
+        for future in as_completed(futures):
+            index = futures[future]
+            result = future.result()
+            by_index[index] = result
             if on_result:
-                on_result(result)
+                on_result(result, len(by_index), len(domains))
 
-    return results
+    return [by_index[i] for i in range(len(domains))]
 
 
 def summarize(results: List[DomainAudit]) -> dict:

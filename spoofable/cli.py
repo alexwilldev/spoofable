@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import List
 
+from . import dns_client
 from .audit import (
     ERROR,
     PROTECTED,
@@ -136,16 +137,28 @@ def cmd_scan(args: argparse.Namespace) -> int:
         return 2
 
     use_colour = sys.stdout.isatty()
-    print("Scanning %d domains...\n" % len(domains), file=sys.stderr)
-
-    results = audit_many(domains, workers=args.workers)
-
+    total = len(domains)
     width = max(len(d) for d in domains) + 2
-    for result in results:
+
+    print("Scanning %d domains...\n" % total, file=sys.stderr)
+
+    # Print each domain the moment it finishes rather than waiting for
+    # the whole batch. A domain whose nameservers are unreachable can
+    # take tens of seconds, and a silent terminal is indistinguishable
+    # from a hang.
+    def report(result: DomainAudit, done: int, count: int) -> None:
         print(
-            "%-*s %s  %s"
-            % (width, result.domain, _colour(result.verdict, use_colour), result.reason)
+            "[%*d/%d] %-*s %s  %s"
+            % (
+                len(str(count)), done, count,
+                width, result.domain,
+                _colour(result.verdict, use_colour),
+                result.reason,
+            ),
+            flush=True,
         )
+
+    results = audit_many(domains, workers=args.workers, on_result=report)
 
     stats = summarize(results)
     print("")
@@ -173,6 +186,22 @@ def build_parser() -> argparse.ArgumentParser:
             "by evaluating its published SPF and DMARC records."
         ),
     )
+    parser.add_argument(
+        "--resolver", action="append", metavar="IP",
+        help=(
+            "DNS resolver to query, repeatable. Defaults to 1.1.1.1, "
+            "8.8.8.8 and 9.9.9.9. Some networks block outbound DNS to "
+            "public resolvers, in which case pass your own."
+        ),
+    )
+    parser.add_argument(
+        "--timeout", type=float, metavar="SECONDS",
+        help="per-query timeout (default 3.0)",
+    )
+    parser.add_argument(
+        "--attempts", type=int, metavar="N",
+        help="times to sweep the resolver list before giving up (default 2)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     check = sub.add_parser("check", help="audit a single domain in detail")
@@ -197,6 +226,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    dns_client.configure(
+        resolvers=args.resolver, timeout=args.timeout, attempts=args.attempts
+    )
     try:
         return args.func(args)
     except KeyboardInterrupt:

@@ -126,6 +126,66 @@ class TestError:
         assert "could not be assessed" in result.reason
 
 
+class Stub:
+    """Stand-in for a DomainAudit, so these tests never touch DNS."""
+
+    def __init__(self, domain):
+        self.domain = domain
+        self.verdict = PROTECTED
+
+
+class TestAuditMany:
+    def test_results_are_returned_in_input_order(self, monkeypatch):
+        """
+        Progress is reported as domains complete, but the returned list
+        must stay in input order so that rerunning a scan produces an
+        identical CSV.
+        """
+        import time
+
+        from spoofable import audit as audit_mod
+
+        delays = {"a.com": 0.05, "b.com": 0.02, "c.com": 0.0}
+
+        def fake_audit(domain):
+            # The first domain is slowest, so completion order is the
+            # reverse of input order and the assertion actually bites.
+            time.sleep(delays[domain])
+            return Stub(domain)
+
+        monkeypatch.setattr(audit_mod, "audit_domain", fake_audit)
+
+        seen = []
+        results = audit_mod.audit_many(
+            ["a.com", "b.com", "c.com"],
+            workers=3,
+            on_result=lambda r, done, total: seen.append(r.domain),
+        )
+
+        assert [r.domain for r in results] == ["a.com", "b.com", "c.com"]
+        assert seen == ["c.com", "b.com", "a.com"]
+
+    def test_progress_counter_counts_up(self, monkeypatch):
+        from spoofable import audit as audit_mod
+
+        monkeypatch.setattr(audit_mod, "audit_domain", Stub)
+
+        counts = []
+        audit_mod.audit_many(
+            ["a.com", "b.com", "c.com"],
+            workers=1,
+            on_result=lambda r, done, total: counts.append((done, total)),
+        )
+        assert counts == [(1, 3), (2, 3), (3, 3)]
+
+    def test_blank_lines_are_skipped(self, monkeypatch):
+        from spoofable import audit as audit_mod
+
+        monkeypatch.setattr(audit_mod, "audit_domain", Stub)
+        results = audit_mod.audit_many(["a.com", "  ", "", "b.com"], workers=2)
+        assert [r.domain for r in results] == ["a.com", "b.com"]
+
+
 class TestSummarize:
     def test_percentages_exclude_errors(self):
         results = [

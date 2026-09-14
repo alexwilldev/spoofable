@@ -62,6 +62,31 @@ EDNS_BUFFER = 4096
 DEFAULT_TIMEOUT = 3.0
 DEFAULT_ATTEMPTS = 2
 
+# Active settings, overridable from the command line. These are read at
+# call time rather than bound as default arguments, so that configure()
+# actually takes effect.
+#
+# The worst case for a single query is timeout x attempts x resolvers.
+# With the defaults that is 3 x 2 x 3 = 18 seconds, and evaluating one
+# SPF record can issue a dozen queries while walking its includes. On a
+# network that silently drops DNS, a single domain can therefore stall
+# for minutes. That is worth knowing before raising any of these.
+_settings = {
+    "resolvers": DEFAULT_RESOLVERS,
+    "timeout": DEFAULT_TIMEOUT,
+    "attempts": DEFAULT_ATTEMPTS,
+}
+
+
+def configure(resolvers=None, timeout=None, attempts=None) -> None:
+    """Override the resolver list, per-query timeout, or retry count."""
+    if resolvers:
+        _settings["resolvers"] = tuple(resolvers)
+    if timeout is not None:
+        _settings["timeout"] = float(timeout)
+    if attempts is not None:
+        _settings["attempts"] = int(attempts)
+
 # Rcodes we care about distinguishing (RFC 1035 section 4.1.1).
 RCODE_NOERROR = 0
 RCODE_FORMERR = 1
@@ -262,9 +287,9 @@ def _recv_exactly(sock: socket.socket, count: int) -> bytes:
 def query(
     name: str,
     qtype: int = TYPE_TXT,
-    resolvers: Sequence[str] = DEFAULT_RESOLVERS,
-    timeout: float = DEFAULT_TIMEOUT,
-    attempts: int = DEFAULT_ATTEMPTS,
+    resolvers: Optional[Sequence[str]] = None,
+    timeout: Optional[float] = None,
+    attempts: Optional[int] = None,
 ) -> DnsResponse:
     """
     Resolve name/qtype, retrying across resolvers and falling back to TCP
@@ -275,6 +300,10 @@ def query(
     non-zero rcode, not an exception, because "this domain publishes no
     DMARC record" is a finding rather than an error.
     """
+    resolvers = tuple(resolvers) if resolvers else _settings["resolvers"]
+    timeout = _settings["timeout"] if timeout is None else timeout
+    attempts = _settings["attempts"] if attempts is None else attempts
+
     packet = _build_query(name, qtype)
     started = time.perf_counter()
     last_error: Optional[Exception] = None
