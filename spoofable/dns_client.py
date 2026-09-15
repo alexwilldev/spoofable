@@ -60,7 +60,10 @@ DEFAULT_RESOLVERS: Tuple[str, ...] = ("1.1.1.1", "8.8.8.8", "9.9.9.9")
 EDNS_BUFFER = 4096
 
 DEFAULT_TIMEOUT = 3.0
-DEFAULT_ATTEMPTS = 2
+# Three sweeps rather than two. A single transient failure used to be
+# enough to change a domain's verdict between runs, which made results
+# unreproducible; one more sweep makes that much rarer.
+DEFAULT_ATTEMPTS = 3
 
 # Active settings, overridable from the command line. These are read at
 # call time rather than bound as default arguments, so that configure()

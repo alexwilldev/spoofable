@@ -183,10 +183,24 @@ def grade(domain: str, spf: SpfRecord, dmarc: DmarcRecord) -> DomainAudit:
         )
 
     if spf.lookup_failed:
+        # We reach here only when DMARC enforces at reject and 100%. The
+        # remaining question, whether SPF is healthy, is unanswered, and
+        # an unanswered question is not a security finding.
+        #
+        # An earlier version graded this WEAK. That was wrong in a way
+        # worth spelling out: WEAK is a claim about the domain, but the
+        # only thing that actually went wrong was our own lookup. The
+        # symptom was berkshirehathaway.com alternating between
+        # PROTECTED and WEAK across runs while nothing at Berkshire
+        # changed at all.
+        #
+        # This is the same principle as the dmarc.lookup_failed guard
+        # above, applied consistently: a failed lookup produces ERROR,
+        # never a verdict.
         return DomainAudit(
-            domain, WEAK,
-            "DMARC p=reject, but the SPF record could not be retrieved, "
-            "so the SPF half is unverified",
+            domain, ERROR,
+            "DMARC enforces, but the SPF record could not be retrieved, "
+            "so this domain could not be fully assessed",
             spf, dmarc, findings,
         )
 

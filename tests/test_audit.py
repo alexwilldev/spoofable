@@ -91,11 +91,20 @@ class TestWeak:
         assert result.verdict == WEAK
         assert "DKIM" in result.reason
 
-    def test_spf_lookup_failure_does_not_claim_absence(self):
+    def test_spf_lookup_failure_is_not_graded_as_weak(self):
+        """
+        A failed SPF lookup is a fact about our measurement, not about
+        the domain, so it must not produce a verdict.
+
+        Regression test for berkshirehathaway.com alternating between
+        PROTECTED and WEAK across consecutive runs while nothing at
+        Berkshire changed. The cause was this branch grading a transient
+        network failure as a security weakness.
+        """
         result = grade(
             "x.com", make_spf(lookup_failed=True), make_dmarc("v=DMARC1; p=reject")
         )
-        assert result.verdict == WEAK
+        assert result.verdict == ERROR
         assert "could not be retrieved" in result.reason
 
 
